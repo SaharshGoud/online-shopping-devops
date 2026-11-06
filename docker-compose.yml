@@ -1,0 +1,15 @@
+services:
+  shopping-app:
+    build: .
+    container_name: online-shopping
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      DATA_DIR: /data
+      SESSION_SECRET: change-this-secret-before-deployment
+    volumes:
+      - shopping-data:/data
+    restart: unless-stopped
+volumes:
+  shopping-data:
