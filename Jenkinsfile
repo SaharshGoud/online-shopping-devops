@@ -1,33 +1,65 @@
 pipeline {
-  agent any
-  environment {
-    IMAGE_NAME = "online-shopping:${BUILD_NUMBER}"
-    // Set KUBECONFIG credential in Jenkins for the deploy stage.
-  }
-  stages {
-    stage('Checkout') {
-      steps { checkout scm }
+    agent any
+
+    environment {
+        IMAGE_NAME = "online-shopping:${BUILD_NUMBER}"
+        BASE_URL = "http://localhost:3000"
     }
-    stage('Install') {
-      steps { sh 'npm install' }
-    }
-    stage('Unit Tests') {
-      steps { sh 'npm test' }
-    }
-    stage('Build Docker Image') {
-      steps { sh 'docker build -t $IMAGE_NAME .' }
-    }
-    stage('Deploy to Kubernetes') {
-      when { branch 'main' }
-      steps {
-        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-          sh 'kubectl apply -f k8s/'
-          sh 'kubectl rollout status deployment/online-shopping --timeout=120s'
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                sh 'npm test'
+            }
+        }
+
+        stage('Selenium Browser Test') {
+            steps {
+                sh '''
+                    npm start > app.log 2>&1 &
+                    APP_PID=$!
+                    trap 'kill $APP_PID 2>/dev/null || true' EXIT
+
+                    echo "Waiting for application to start..."
+
+                    for i in $(seq 1 30); do
+                        if curl -fsS http://localhost:3000 > /dev/null; then
+                            echo "Application is running."
+                            break
+                        fi
+                        sleep 2
+                    done
+
+                    curl -fsS http://localhost:3000 > /dev/null
+
+                    echo "Running Selenium browser test..."
+                    npm run test:selenium
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $IMAGE_NAME .'
+            }
+        }
     }
-  }
-  post {
-    always { echo 'Pipeline finished. Review stage results above.' }
-  }
+
+    post {
+        always {
+            echo 'Pipeline finished. Review stage results above.'
+        }
+    }
 }
